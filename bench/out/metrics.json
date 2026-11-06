@@ -1,0 +1,91 @@
+{
+  "tasks": 40,
+  "task_success_rate": 1.0,
+  "nav_steps": 84,
+  "nav_success_rate": 1.0,
+  "alarms_total": 38,
+  "alarms_by_level": {
+    "warn": 26,
+    "critical": 12
+  },
+  "alarm_recall": 1.0,
+  "alarm_false_positive_events": 0,
+  "injected_faults": 34,
+  "low_battery_interrupts": 7,
+  "low_battery_recovery_rate": 1.0,
+  "unknown_reading_ratio": 0.0496,
+  "step_fail_reasons": {},
+  "wall_s_p50": 0.034,
+  "wall_s_p95": 0.166,
+  "odometer_m": 859.74,
+  "feedback_overruns": 0,
+  "false_positive_rounds": 13,
+  "plan_ms_p95": 0.022,
+  "plan_ms_median": 0.013,
+  "reject_cases": [
+    {
+      "case": "去天台看看设备",
+      "layer": "text",
+      "rejected": true,
+      "reason": "未识别到任何已知点位（地点白名单未命中）"
+    },
+    {
+      "case": "巡检不存在的机柜",
+      "layer": "text",
+      "rejected": true,
+      "reason": "未识别到任何已知点位（地点白名单未命中）"
+    },
+    {
+      "case": "去充电桩旁边的配电柜Z看温度",
+      "layer": "text",
+      "rejected": true,
+      "reason": "未识别到任何已知点位（地点白名单未命中）"
+    },
+    {
+      "case": "未声明动作类型",
+      "layer": "plan",
+      "rejected": true,
+      "reason": "第 0 步动作类型 'open_door' 不在白名单"
+    },
+    {
+      "case": "未知点位",
+      "layer": "plan",
+      "rejected": true,
+      "reason": "第 0 步点位 'wp_ghost' 不在白名单"
+    },
+    {
+      "case": "点位与检测错配",
+      "layer": "plan",
+      "rejected": true,
+      "reason": "第 1 步检测点位 wp_b2 与上一导航目标不一致"
+    },
+    {
+      "case": "该点位没有该传感器",
+      "layer": "plan",
+      "rejected": true,
+      "reason": "第 1 步点位 配电柜A 没有 gas 传感器"
+    },
+    {
+      "case": "地图名不一致",
+      "layer": "plan",
+      "rejected": true,
+      "reason": "计划地图 'another_floor' 与当前地图 'office_floor_3f' 不一致"
+    },
+    {
+      "case": "步数超限",
+      "layer": "plan",
+      "rejected": true,
+      "reason": "步数 40 超出上限 32"
+    },
+    {
+      "case": "超时参数越界",
+      "layer": "plan",
+      "rejected": true,
+      "reason": "第 0 步 timeout_s 越界"
+    }
+  ],
+  "reject_block_rate": 1.0,
+  "resample_total": 24,
+  "wall_clock_s": 2.93,
+  "simulated_seconds_per_round": 12.2
+}
