@@ -15,8 +15,8 @@
   "low_battery_recovery_rate": 1.0,
   "unknown_reading_ratio": 0.0496,
   "step_fail_reasons": {},
-  "wall_s_p50": 0.034,
-  "wall_s_p95": 0.166,
+  "wall_s_p50": 0.045,
+  "wall_s_p95": 0.202,
   "odometer_m": 859.74,
   "feedback_overruns": 0,
   "false_positive_rounds": 13,
@@ -86,6 +86,6 @@
   ],
   "reject_block_rate": 1.0,
   "resample_total": 24,
-  "wall_clock_s": 2.93,
+  "wall_clock_s": 3.52,
   "simulated_seconds_per_round": 12.2
 }
