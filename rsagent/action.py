@@ -131,9 +131,18 @@ class ActionExecutor:
         self.feedback_log: list[Feedback] = []
         self.overruns = 0
         self._feedback_cb = None
+        self._trace_cb = None
 
     def on_feedback(self, cb) -> None:
         self._feedback_cb = cb
+
+    def on_trace(self, cb) -> None:
+        """轨迹导出钩子：每个 tick 回传一次位姿/电量（含回充阶段，step_index=-1）。
+
+        与 on_feedback 的区别：feedback 是对外推送的高频状态，trace 是给回放用的
+        全量记录，所以回充这种「不在计划步骤里」的动作也要记，否则回放会断档。
+        """
+        self._trace_cb = cb
 
     def request_cancel(self) -> None:
         """外部取消（急停、人工接管）。只置标志，由执行循环在 tick 边界收敛。"""
@@ -221,6 +230,11 @@ class ActionExecutor:
                 if any(r.valid for r in rs):
                     valid_n += 1
                 attempts += 1
+                # 采样期间也要回报进度：真机上这段是 6 秒静止，客户端如果一直没反馈
+                # 会以为连接断了（回放里则表现为机器人瞬移）
+                self._emit(plan, step, GoalStatus.EXECUTING,
+                           min(1.0, attempts / SAMPLES_PER_INSPECT),
+                           clock + (attempts - 1) * SAMPLE_INTERVAL_S)
             for r in readings:
                 self.alarms.feed(r)
             clock += max(0, attempts - 1) * SAMPLE_INTERVAL_S
@@ -314,12 +328,24 @@ class ActionExecutor:
         dock = Pose(float(self.gmap.charger_cell[0]), float(self.gmap.charger_cell[1]))
         start = cell_of(self.robot.pose)
         path = self.gmap.plan(start, self.gmap.charger_cell)
+        self._emit_trace(-1, clock, 0.0)
+        guard = 0.0
         if path:
-            guard = 0
+            # 沿 A* 路径回桩：第一版直接朝桩走直线，等于忽略障碍（回放里一眼能看出来穿墙）
+            for cell in path:
+                aim = Pose(float(cell[0]), float(cell[1]))
+                while self.robot.pose.distance_to(aim) > 0.35:
+                    self.robot.step_towards(aim, DT, blocked_ahead=False)
+                    clock += DT
+                    guard += DT
+                    self._emit_trace(-1, clock, min(0.9, guard / 60.0))
+                    if guard > 600:
+                        return False, clock
             while self.robot.pose.distance_to(dock) > self.robot.cfg.arrive_tolerance:
                 self.robot.step_towards(dock, DT, blocked_ahead=False)
                 clock += DT
                 guard += DT
+                self._emit_trace(-1, clock, min(0.95, guard / 60.0))
                 if guard > 600:
                     return False, clock
         else:
@@ -327,6 +353,7 @@ class ActionExecutor:
             self.robot.pose = dock
         while not self.robot.charge(DT):
             clock += DT
+            self._emit_trace(-1, clock, 1.0)
             if clock > 1e6:
                 return False, clock
         return True, clock
@@ -337,11 +364,22 @@ class ActionExecutor:
                       pose=self.robot.pose, progress=prog, battery=self.robot.battery,
                       elapsed_s=clock)
         self.feedback_log.append(fb)
+        if self._trace_cb:
+            self._trace_cb(fb)
         if self._feedback_cb:
             t0 = time.perf_counter()
             self._feedback_cb(fb)
             if time.perf_counter() - t0 > TICK_BUDGET_S:
                 self.overruns += 1
+
+    def _emit_trace(self, step_index: int, clock: float, prog: float) -> None:
+        """只写轨迹、不写 feedback_log：用于计划外动作（回桩、充电）。"""
+        if not self._trace_cb:
+            return
+        self._trace_cb(Feedback(plan_id="", step_index=step_index,
+                                status=GoalStatus.EXECUTING, pose=self.robot.pose,
+                                progress=prog, battery=self.robot.battery,
+                                elapsed_s=clock))
 
     def _mk(self, step: Step, st: GoalStatus, t_start: float, t_end: float,
             note: str, readings=None) -> StepResult:
