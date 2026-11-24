@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>巡检机器人任务执行回放 · robot-sim-agent</title>
+<meta name="color-scheme" content="light">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:#fbfbfc;color:#15181d;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;
+}
+:root{
+  --ink:#15181d;--muted:#646e7d;--faint:#9aa4b2;--line:#e6e8ec;--soft:#f4f6f8;--card:#fff;
+  --acc:#0f766e;--acc-soft:#e9f5f3;--warn:#b45309;--warn-soft:#fdf4e7;
+  --bad:#c02a3a;--bad-soft:#fdeff1;--ok:#0f766e;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Consolas,monospace;
+}
+h1,h2,h3{margin:0;line-height:1.3;letter-spacing:-.01em}
+p{margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ---------- 头部 ---------- */
+header{border-bottom:1px solid var(--line);background:#fff}
+.hd{padding:20px 0 16px}
+.crumb{font-size:12px;color:var(--faint);letter-spacing:.02em;margin-bottom:6px}
+h1{font-size:21px;font-weight:650}
+.sub{color:var(--muted);font-size:13px;margin-top:6px}
+.task{
+  margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;
+  background:var(--soft);font-size:13.5px;color:var(--ink)}
+.task b{color:var(--acc);font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.chip{
+  font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);
+  background:#fff;color:var(--muted);white-space:nowrap}
+.chip b{color:var(--ink);font-weight:600}
+.chip.ok{border-color:#bfe0da;background:var(--acc-soft);color:var(--acc)}
+.chip.warn{border-color:#f0dcbb;background:var(--warn-soft);color:var(--warn)}
+
+/* ---------- 主体 ---------- */
+main{padding:18px 0 40px}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 344px;gap:16px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+
+.stage{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.canvas-box{position:relative;background:#f7f8fa}
+canvas#map{display:block;width:100%;height:auto}
+.overlay{position:absolute;left:12px;top:12px;display:flex;gap:8px;flex-wrap:wrap;pointer-events:none}
+.ov{
+  background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:7px;
+  padding:4px 9px;font-size:12px;color:var(--muted);backdrop-filter:blur(4px)}
+.ov b{color:var(--ink);font-weight:600;font-family:var(--mono)}
+.legend{position:absolute;right:12px;bottom:10px;font-size:11px;color:var(--faint);
+  background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:6px;padding:3px 8px}
+
+/* ---------- 控制条 ---------- */
+.ctl{display:flex;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid var(--line);flex-wrap:wrap}
+button{
+  font:inherit;font-size:13px;padding:6px 12px;border-radius:7px;border:1px solid var(--line);
+  background:#fff;color:var(--ink);cursor:pointer;transition:.12s}
+button:hover{border-color:#cfd6de;background:#fafbfc}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff;min-width:74px}
+button.primary:hover{background:#0c655e}
+.speeds{display:flex;gap:4px;margin-left:auto}
+.speeds button{padding:5px 9px;font-size:12px;color:var(--muted)}
+.speeds button.on{background:var(--acc-soft);border-color:#bfe0da;color:var(--acc);font-weight:600}
+.clock{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.clock b{color:var(--ink);font-weight:600}
+
+/* ---------- 时间轴 ---------- */
+.tl{padding:0 12px 12px}
+.track{position:relative;height:34px;margin-top:6px;cursor:pointer}
+.bands{position:absolute;inset:0 0 12px 0;border-radius:6px;overflow:hidden;background:var(--soft)}
+.band{position:absolute;top:0;bottom:0;border-right:1px solid rgba(255,255,255,.8)}
+.band.nav{background:#d7e9e6}
+.band.ins{background:#e7eefc}
+.band.dock{background:#f7e6c9}
+.band.abort{background:#f6cdd3}
+.playhead{position:absolute;top:-2px;bottom:10px;width:2px;background:var(--ink);border-radius:2px;pointer-events:none}
+.playhead::after{content:"";position:absolute;left:-3px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--ink)}
+.scale{display:flex;justify-content:space-between;font-size:11px;color:var(--faint);font-family:var(--mono)}
+
+/* ---------- 右栏 ---------- */
+.col{display:flex;flex-direction:column;gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 13px}
+.card h2{font-size:12px;color:var(--faint);font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-bottom:9px}
+.stepnow{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.stepnow .num{font-family:var(--mono);font-size:19px;font-weight:650;color:var(--acc)}
+.stepnow .what{font-size:14px;font-weight:600}
+.stepnow .way{font-size:13px;color:var(--muted)}
+.bar{height:5px;border-radius:3px;background:var(--soft);overflow:hidden;margin-top:9px}
+.bar>i{display:block;height:100%;background:var(--acc);border-radius:3px;transition:width .08s linear}
+.bar>i.bad{background:var(--bad)}
+
+.fsm{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:2px}
+.st{font-size:11px;padding:2px 7px;border-radius:6px;border:1px solid var(--line);color:var(--faint);background:#fff;font-family:var(--mono)}
+.st.on{color:#fff;background:var(--acc);border-color:var(--acc);font-weight:600}
+.st.on.bad{background:var(--bad);border-color:var(--bad)}
+.st.on.warn{background:var(--warn);border-color:var(--warn)}
+.arrow{color:var(--faint);font-size:11px}
+
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat .v{font-family:var(--mono);font-size:16px;font-weight:650}
+.stat .k{font-size:11px;color:var(--faint)}
+.batt{height:7px;border-radius:4px;background:var(--soft);position:relative;overflow:hidden;margin-top:8px}
+.batt>i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,#0f766e,#22a196);transition:width .1s linear}
+.batt>i.low{background:linear-gradient(90deg,#c02a3a,#e0606d)}
+.batt .mark{position:absolute;top:-2px;bottom:-2px;width:1px;background:#b45309;opacity:.65}
+
+.list{display:flex;flex-direction:column;gap:6px;max-height:190px;overflow:auto}
+.al{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;padding:6px 8px;border-radius:7px;background:var(--soft);border-left:3px solid var(--line)}
+.al.critical{border-left-color:var(--bad);background:var(--bad-soft)}
+.al.warn{border-left-color:var(--warn);background:var(--warn-soft)}
+.al .t{font-family:var(--mono);font-size:11px;color:var(--faint);flex:none;padding-top:2px}
+.al .m{min-width:0}
+.al .m b{font-weight:600}
+.al .m span{color:var(--muted)}
+.empty{font-size:12.5px;color:var(--faint);padding:4px 2px}
+
+.log{display:flex;flex-direction:column;gap:3px;max-height:200px;overflow:auto;font-size:12.5px}
+.log .row{display:flex;gap:8px;padding:2px 0;color:var(--muted);opacity:.55;transition:.2s}
+.log .row.past{opacity:1}
+.log .row .t{font-family:var(--mono);font-size:11px;color:var(--faint);flex:none;min-width:38px;text-align:right}
+.log .row.k-alarm{color:var(--bad)}
+.log .row.k-dock,.log .row.k-charge{color:var(--warn)}
+.log .row.k-abort{color:var(--bad);font-weight:600}
+
+.steps{display:flex;flex-direction:column;gap:2px;max-height:250px;overflow:auto}
+.sr{display:flex;gap:7px;align-items:center;padding:4px 6px;border-radius:6px;font-size:12.5px;cursor:pointer;color:var(--muted)}
+.sr:hover{background:var(--soft)}
+.sr .i{font-family:var(--mono);font-size:11px;color:var(--faint);min-width:16px}
+.sr .ty{font-size:11px;padding:1px 5px;border-radius:4px;background:var(--soft);color:var(--muted);font-family:var(--mono)}
+.sr .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sr .st2{font-size:11px;font-family:var(--mono);color:var(--faint)}
+.sr.now{background:var(--acc-soft)}
+.sr.now .nm{color:var(--acc);font-weight:600}
+.sr.done .st2{color:var(--ok)}
+.sr.fail .st2{color:var(--bad)}
+.sr.retry .st2{color:var(--warn)}
+
+footer{border-top:1px solid var(--line);padding:14px 0 30px;font-size:12px;color:var(--faint)}
+footer b{color:var(--muted);font-weight:600}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap hd">
+    <div class="crumb">robot-sim-agent · 执行回放（仿真，非真机）</div>
+    <h1>巡检机器人任务执行回放</h1>
+    <p class="sub">自然语言指令 → 结构化计划 → Action 派发 → 状态机执行 → 异常恢复。下面是<b>一次真实执行</b>的逐 tick 记录，不是手写动画。</p>
+    <div class="task"><b>指令</b>　<span id="taskText"></span></div>
+    <div class="chips" id="chips"></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="grid">
+    <section class="stage">
+      <div class="canvas-box">
+        <canvas id="map"></canvas>
+        <div class="overlay">
+          <div class="ov">t <b id="ovT">0.0</b> s</div>
+          <div class="ov">步骤 <b id="ovStep">–</b></div>
+          <div class="ov">电量 <b id="ovBatt">–</b></div>
+        </div>
+        <div class="legend">障碍（膨胀半径 1 格）· 实线＝实际走过的轨迹</div>
+      </div>
+      <div class="ctl">
+        <button class="primary" id="btnPlay">播放</button>
+        <button id="btnReset">重播</button>
+        <span class="clock">仿真 <b id="clkT">0.0</b> / <span id="clkMax">0.0</span> s</span>
+        <div class="speeds" id="speeds"></div>
+      </div>
+      <div class="tl">
+        <div class="track" id="track">
+          <div class="bands" id="bands"></div>
+          <div class="playhead" id="playhead" style="left:0"></div>
+        </div>
+        <div class="scale"><span>0 s</span><span id="scaleMid">–</span><span id="scaleEnd">–</span></div>
+      </div>
+    </section>
+
+    <aside class="col">
+      <div class="card">
+        <h2>当前目标</h2>
+        <div class="stepnow">
+          <span class="num" id="nowIdx">–</span>
+          <span class="what" id="nowType">待开始</span>
+          <span class="way" id="nowWay"></span>
+        </div>
+        <div class="bar"><i id="nowBar" style="width:0"></i></div>
+        <div class="fsm" style="margin-top:10px" id="fsm"></div>
+      </div>
+
+      <div class="card">
+        <h2>本体状态</h2>
+        <div class="stats">
+          <div class="stat"><div class="v" id="sBatt">–</div><div class="k">电量 %</div></div>
+          <div class="stat"><div class="v" id="sOdo">–</div><div class="k">里程 m</div></div>
+          <div class="stat"><div class="v" id="sDone">–</div><div class="k">完成步骤</div></div>
+        </div>
+        <div class="batt"><i id="battBar" style="width:100%"></i><span class="mark" style="left:25%"></span></div>
+      </div>
+
+      <div class="card">
+        <h2>告警（持续时长 + 滞回 + 去重）</h2>
+        <div class="list" id="alarms"><p class="empty">尚未触发</p></div>
+      </div>
+
+      <div class="card">
+        <h2>步骤</h2>
+        <div class="steps" id="stepList"></div>
+      </div>
+
+      <div class="card">
+        <h2>事件</h2>
+        <div class="log" id="log"></div>
+      </div>
+    </aside>
+  </div>
+
+  <footer>
+    <p><b>操作</b>：空格 播放/暂停 · ← → 前后 1 秒 · 1/2/4/8 切倍速 · 点右侧步骤直接跳到那一步 · 拖时间轴任意定位。</p>
+    <p style="margin-top:6px"><b>怎么读这个回放</b>：横轴是仿真时钟。绿色带＝导航，蓝色带＝到点采样，橙色带＝回桩充电，红带＝中断。
+    右侧「当前目标」下方那排是这条 goal 走过的状态（ROS 2 action 语义：executing → succeeded / aborted）。</p>
+    <p style="margin-top:6px">数据来源：<b>rsagent</b> 一次完整执行导出的 <span class="mono" id="footMeta"></span>。
+    二维栅格仿真、位姿为真值、Action 层按 ROS 2 语义自行实现，未接真机。</p>
+  </footer>
+</main>
+
+<script id="replay-data" type="application/json">__DATA__</script>
+<script>
+(function(){
+  const D = JSON.parse(document.getElementById('replay-data').textContent);
+  const M = D.map, TR = D.trace, STEPS = D.plan.steps, RES = D.steps, AL = D.alarms, EV = D.events;
+  const T_MAX = D.meta.sim_s;
+  const WP = {}; M.waypoints.forEach(w => WP[w.id] = w);
+
+  /* ---------- 头 ---------- */
+  document.getElementById('taskText').textContent = D.meta.task;
+  const chips = [
+    ['地图', M.rows + '×' + M.cols + ' 栅格 · ' + M.resolution + ' m/格'],
+    ['计划', STEPS.length + ' 步 · ' + (D.meta.plan_source === 'rule' ? '规则规划器' : '模型规划器')],
+    ['仿真', T_MAX.toFixed(1) + ' s · ' + D.meta.odometer_m.toFixed(1) + ' m'],
+    ['结果', D.meta.success ? '成功' : '失败'],
+    ['告警', D.meta.alarm_count + ' 条'],
+    ['低电量中断', D.meta.recovered_from_low_battery ? '发生并恢复' : '无']
+  ];
+  const chipsEl = document.getElementById('chips');
+  chips.forEach((c, i) => {
+    const d = document.createElement('span');
+    d.className = 'chip' + (i === 3 ? (D.meta.success ? ' ok' : ' warn') : '') + (i === 5 && D.meta.recovered_from_low_battery ? ' warn' : '');
+    d.innerHTML = c[0] + ' <b>' + c[1] + '</b>';
+    chipsEl.appendChild(d);
+  });
+  document.getElementById('clkMax').textContent = T_MAX.toFixed(1);
+  document.getElementById('scaleEnd').textContent = T_MAX.toFixed(1) + ' s';
+  document.getElementById('scaleMid').textContent = (T_MAX / 2).toFixed(0) + ' s';
+  document.getElementById('footMeta').textContent =
+    'plan ' + D.meta.plan_id + ' · seed ' + D.meta.seed + ' · ' + D.meta.tick_count + ' tick · ' + D.meta.generated;
+
+  /* ---------- 预处理：step 是否中断过 ---------- */
+  const retried = new Set();
+  let prevSt = null, prevS = null;
+  TR.forEach(p => {
+    if (p.st === 'aborted' && p.s >= 0) retried.add(p.s);
+    if (prevS !== null && p.s === prevS && prevSt === 'aborted' && p.st === 'executing') retried.add(p.s);
+    prevSt = p.st; prevS = p.s;
+  });
+
+  /* 回充段：s=-1 的连续区间。后面还有 trace 的＝低电量中断（回充后回到原步骤），
+     最后一段＝计划内的收尾回充。 */
+  const dockRuns = [];
+  TR.forEach((p, i) => {
+    if (p.s === -1 && (i === 0 || TR[i - 1].s !== -1)) dockRuns.push({ i0: i, t0: p.t, t1: p.t, step: (TR[i - 1] || {}).s });
+    if (p.s === -1) dockRuns[dockRuns.length - 1].t1 = p.t;
+  });
+  const retryAt = {};
+  dockRuns.forEach((r, k) => {
+    r.interrupt = k < dockRuns.length - 1;   // 不是最后一段 → 中断后回充
+    if (r.interrupt && r.step >= 0) { retried.add(r.step); retryAt[r.step] = r.t0; }
+  });
+
+  /* 每步起止：计划是串行的，所以「第 i 步完成」＝「第 i+1 步开始」。
+     不按 succeeded 事件算：采样步骤只回 executing，终态由执行层写进结果，trace 里没有。 */
+  const stepStart = {};
+  TR.forEach(p => { if (p.s >= 0 && stepStart[p.s] === undefined) stepStart[p.s] = p.t; });
+  const lastDock = dockRuns[dockRuns.length - 1];
+  const doneT = {};
+  STEPS.forEach((s, i) => {
+    if (stepStart[i + 1] !== undefined) doneT[i] = stepStart[i + 1];
+    else if (lastDock) doneT[i] = lastDock.t0;      // 最后一步在回充段之前结束
+  });
+  if (lastDock) doneT[STEPS.length - 1] = lastDock.t1 - 0.05;
+
+  /* 里程：按轨迹分段累计，用于实时读数 */
+  const cum = [0];
+  for (let i = 1; i < TR.length; i++) {
+    // 与仿真器一致：里程按位姿单位累计（bench 里报的也是这个口径）
+    cum[i] = cum[i - 1] + Math.hypot(TR[i].x - TR[i - 1].x, TR[i].y - TR[i - 1].y);
+  }
+  function odomAt(t) {
+    let i = 1;
+    while (i < TR.length && TR[i].t < t) i++;
+    if (i >= TR.length) return cum[cum.length - 1];
+    const a = TR[i - 1], b = TR[i], span = b.t - a.t;
+    const k = span > 1e-9 ? (t - a.t) / span : 0;
+    return cum[i - 1] + (cum[i] - cum[i - 1]) * k;
+  }
+
+  /* ---------- 线段（时间轴色带） ---------- */
+  const segs = [];
+  let cur = null;
+  TR.forEach(p => {
+    const kind = p.s === -1 ? 'dock' : (STEPS[p.s] && STEPS[p.s].step_type === 'inspect' ? 'ins' : 'nav');
+    const key = kind + '|' + p.s + '|' + p.st;
+    if (!cur || cur.key !== key) { cur = { key, kind, s: p.s, st: p.st, t0: p.t, t1: p.t }; segs.push(cur); }
+    else cur.t1 = p.t;
+  });
+  const bandsEl = document.getElementById('bands');
+  segs.forEach(s => {
+    const d = document.createElement('div');
+    let k = (s.st === 'aborted') ? 'abort' : s.kind;
+    if (s.kind === 'dock') {
+      const run = dockRuns.find(r => s.t0 >= r.t0 - 0.01 && s.t1 <= r.t1 + 0.01);
+      if (run && run.interrupt) k = 'abort';
+    }
+    d.className = 'band ' + k;
+    d.style.left = (s.t0 / T_MAX * 100) + '%';
+    d.style.width = Math.max(0.15, (s.t1 - s.t0) / T_MAX * 100) + '%';
+    d.title = k === 'abort' ? '低电量中断 → 回桩充电' : '';
+    bandsEl.appendChild(d);
+  });
+
+  /* ---------- 步骤列表 ---------- */
+  const stepListEl = document.getElementById('stepList');
+  const stepEls = [];
+  STEPS.forEach((s, i) => {
+    const el = document.createElement('div');
+    el.className = 'sr';
+    const nm = s.step_type === 'dock' ? '回充电桩'
+      : (s.step_type === 'inspect' ? '采样 ' + (WP[s.waypoint_id] ? WP[s.waypoint_id].name : '') + ' · ' + (s.sensor || '')
+        : '导航 → ' + (WP[s.waypoint_id] ? WP[s.waypoint_id].name : ''));
+    el.innerHTML = '<span class="i">' + String(i + 1).padStart(2, '0') + '</span>' +
+      '<span class="ty">' + s.step_type + '</span>' +
+      '<span class="nm">' + nm + '</span>' +
+      '<span class="st2"></span>';
+    el.onclick = () => { const t = tOfStep(i); if (t !== null) seek(t + 0.05); };
+    stepListEl.appendChild(el);
+    stepEls.push({ el, st: el.querySelector('.st2') });
+  });
+
+  function tOfStep(i) {
+    const p = TR.find(x => x.s === i);
+    return p ? p.t : null;
+  }
+
+  /* ---------- 事件日志 ---------- */
+  const logEl = document.getElementById('log');
+  const logRows = EV.map(e => {
+    const d = document.createElement('div');
+    d.className = 'row k-' + e.kind;
+    d.innerHTML = '<span class="t">' + e.t.toFixed(1) + 's</span><span>' + e.text + '</span>';
+    d.style.display = 'none';          // 只显示已经发生的事件，避免剧透后面的剧情
+    logEl.appendChild(d);
+    return { el: d, t: e.t };
+  });
+
+  /* ---------- 告警 ---------- */
+  const alarmEl = document.getElementById('alarms');
+  const SENSOR_CN = { temp: '温度', humidity: '湿度', gas: '气体', meter: '电压', indicator: '指示灯' };
+
+  /* ---------- canvas ---------- */
+  const cv = document.getElementById('map');
+  const ctx = cv.getContext('2d');
+  const PAD = 18;
+  let CW = 0, CH = 0, CELL = 10;
+  let lastAng = 0;
+
+  function layout() {
+    const box = cv.parentElement.clientWidth;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const cell = Math.max(8, Math.floor((box - PAD * 2) / M.cols));
+    CW = cell * M.cols + PAD * 2;
+    CH = cell * M.rows + PAD * 2;
+    CELL = cell;
+    cv.width = CW * dpr; cv.height = CH * dpr;
+    cv.style.width = CW + 'px'; cv.style.height = CH + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw();
+  }
+
+  // 仿真坐标：cell = [行, 列]，pose.x 是行、pose.y 是列；屏幕是 (列→右, 行→下)
+  const PX = v => PAD + v * CELL + CELL / 2;   // 横向：给「列」
+  const PY = v => PAD + v * CELL + CELL / 2;   // 纵向：给「行」
+
+  function draw() {
+    if (!CELL) return;
+    ctx.clearRect(0, 0, CW, CH);
+    // 地板
+    ctx.fillStyle = '#f7f8fa';
+    ctx.fillRect(0, 0, CW, CH);
+
+    // 栅格
+    for (let r = 0; r < M.rows; r++) {
+      for (let c = 0; c < M.cols; c++) {
+        const wall = M.grid[r][c] === '1';
+        const x = PAD + c * CELL, y = PAD + r * CELL;
+        if (wall) {
+          ctx.fillStyle = '#dfe3e9';
+          ctx.fillRect(x, y, CELL, CELL);
+          ctx.fillStyle = 'rgba(0,0,0,.04)';
+          ctx.fillRect(x + 2, y + 2, CELL - 4, CELL - 4);
+        } else {
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(x, y, CELL, CELL);
+          ctx.strokeStyle = '#f0f2f5';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + .5, y + .5, CELL - 1, CELL - 1);
+        }
+      }
+    }
+
+    // 轨迹
+    const upto = TR.filter(p => p.t <= T);
+    if (upto.length > 1) {
+      ctx.lineWidth = Math.max(2, CELL * 0.16);
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      for (let i = 1; i < upto.length; i++) {
+        const a = upto[i - 1], b = upto[i];
+        if (a.s === -1 && b.s === -1 && Math.abs(b.x - a.x) + Math.abs(b.y - a.y) < 1e-6) continue;
+        const alpha = 0.15 + 0.55 * (i / upto.length);
+        ctx.strokeStyle = 'rgba(15,118,110,' + alpha.toFixed(3) + ')';
+        ctx.beginPath();
+        ctx.moveTo(PX(a.y), PY(a.x));
+        ctx.lineTo(PX(b.y), PY(b.x));
+        ctx.stroke();
+      }
+    }
+
+    // 点位
+    const doneS = new Set();
+    RES.forEach(r => { if (r.status === 'succeeded') doneS.add(r.waypoint_id); });
+    M.waypoints.forEach(w => {
+      const x = PX(w.cell[1]), y = PY(w.cell[0]), s = CELL * 0.52;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(x - s / 2, y - s / 2, s, s, 3) : ctx.rect(x - s / 2, y - s / 2, s, s);
+      ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.strokeStyle = '#c3cbd6'; ctx.lineWidth = 1.4; ctx.stroke();
+    });
+
+    // 充电桩
+    (function () {
+      const x = PX(M.charger.cell[1]), y = PY(M.charger.cell[0]), s = CELL * 0.6;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(x - s / 2, y - s / 2, s, s, 4) : ctx.rect(x - s / 2, y - s / 2, s, s);
+      ctx.fillStyle = '#fdf4e7'; ctx.fill();
+      ctx.strokeStyle = '#e0c79a'; ctx.lineWidth = 1.4; ctx.stroke();
+      ctx.fillStyle = '#b45309'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = '600 ' + Math.max(9, CELL * 0.42) + 'px sans-serif';
+      ctx.fillText('⚡', x, y + 1);
+    })();
+
+    // 告警光晕
+    AL.forEach(a => {
+      if (T < a.first_ts) return;
+      const w = WP[a.waypoint_id]; if (!w) return;
+      const x = PX(w.cell[1]), y = PY(w.cell[0]);
+      const pulse = 0.5 + 0.5 * Math.sin((T - a.first_ts) * 3);
+      const R = CELL * (0.75 + 0.12 * pulse);
+      const g = ctx.createRadialGradient(x, y, CELL * 0.2, x, y, R * 1.6);
+      const col = a.level === 'critical' ? '192,42,58' : '180,83,9';
+      g.addColorStop(0, 'rgba(' + col + ',0.28)');
+      g.addColorStop(1, 'rgba(' + col + ',0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y, R * 1.6, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, R * 0.5, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(' + col + ',0.75)'; ctx.lineWidth = 1.6; ctx.stroke();
+    });
+
+    // 机器人
+    const p = poseAt(T);
+    if (p) {
+      const x = PX(p.y), y = PY(p.x), R = CELL * 0.4;
+      ctx.beginPath(); ctx.arc(x, y + R * 0.25, R * 1.05, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(15,118,110,.12)'; ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2);
+      ctx.fillStyle = '#0f766e'; ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+      // 朝向：用最近 0.2s 的位移算屏幕角度（仿真里 x 是行、y 是列）
+      const prev = poseAt(Math.max(0, T - 0.2));
+      const dxs = p.y - prev.y, dys = p.x - prev.x;
+      if (Math.abs(dxs) + Math.abs(dys) > 1e-6) lastAng = Math.atan2(dys, dxs);
+      const a1 = lastAng;
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(a1) * R * 1.9, y + Math.sin(a1) * R * 1.9);
+      ctx.lineTo(x + Math.cos(a1 + 2.4) * R * 0.85, y + Math.sin(a1 + 2.4) * R * 0.85);
+      ctx.lineTo(x + Math.cos(a1 - 2.4) * R * 0.85, y + Math.sin(a1 - 2.4) * R * 0.85);
+      ctx.closePath();
+      ctx.fillStyle = '#15181d'; ctx.fill();
+    }
+
+    // 点位名称最后画：告警光晕和机器人都不能把标签盖掉
+    M.waypoints.forEach(w => {
+      const x = PX(w.cell[1]), y = PY(w.cell[0]), s = CELL * 0.52;
+      const txt = w.name;
+      ctx.font = '600 ' + Math.max(8, CELL * 0.36) + 'px -apple-system,"PingFang SC",sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      const tw = ctx.measureText(txt).width;
+      const ty = y + s / 2 + 2;
+      ctx.fillStyle = 'rgba(255,255,255,.88)';
+      ctx.fillRect(x - tw / 2 - 2, ty - 1, tw + 4, CELL * 0.36 + 3);
+      ctx.fillStyle = '#5c6577';
+      ctx.fillText(txt, x, ty);
+    });
+  }
+
+  /* ---------- 取时刻状态 ---------- */
+  let T = 0;
+  function poseAt(t) {
+    if (!TR.length) return null;
+    if (t <= TR[0].t) return TR[0];
+    for (let i = 1; i < TR.length; i++) {
+      if (TR[i].t >= t) {
+        const a = TR[i - 1], b = TR[i];
+        const span = b.t - a.t;
+        const k = span > 1e-9 ? (t - a.t) / span : 0;
+        return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k,
+                 yaw: a.yaw + (b.yaw - a.yaw) * k, b: a.b + (b.b - a.b) * k,
+                 s: b.s, st: b.st, p: a.p + (b.p - a.p) * k };
+      }
+    }
+    return TR[TR.length - 1];
+  }
+
+  const FSM = ['pending', 'accepted', 'executing', 'succeeded'];
+  const fsmEl = document.getElementById('fsm');
+
+  function renderFsm(st) {
+    const order = ['pending', 'accepted', 'executing', st === 'aborted' ? 'aborted' : 'succeeded'];
+    fsmEl.innerHTML = '';
+    order.forEach((s, i) => {
+      const d = document.createElement('span');
+      d.className = 'st' + (s === st ? ' on' + (s === 'aborted' ? ' bad' : '') : '');
+      d.textContent = s;
+      fsmEl.appendChild(d);
+      if (i < order.length - 1) {
+        const a = document.createElement('span');
+        a.className = 'arrow'; a.textContent = '→';
+        fsmEl.appendChild(a);
+      }
+    });
+  }
+
+  /* ---------- 主渲染 ---------- */
+  let curAlarmsShown = -1, lastPastN = -1;
+  function update() {
+    const p = poseAt(T) || {};
+    const si = p.s;
+    const step = si >= 0 ? STEPS[si] : null;
+
+    document.getElementById('ovT').textContent = T.toFixed(1);
+    document.getElementById('ovBatt').textContent = (p.b != null ? p.b.toFixed(1) : '–') + '%';
+    document.getElementById('clkT').textContent = T.toFixed(1);
+
+    // 当前目标
+    const isDock = si === -1;
+    const dockRun = isDock ? dockRuns.find(r => T >= r.t0 - 0.05 && T <= r.t1 + 0.05) : null;
+    const dockInterrupt = !!(dockRun && dockRun.interrupt);
+    document.getElementById('ovStep').textContent = isDock ? '回充中' : (si >= 0 ? (si + 1) + ' / ' + STEPS.length : '–');
+    document.getElementById('nowIdx').textContent = isDock ? '⚡' : (si >= 0 ? String(si + 1).padStart(2, '0') : '–');
+    document.getElementById('nowType').textContent = isDock
+      ? (dockInterrupt ? '回桩充电（低电量中断）' : '回桩充电（计划内）')
+      : step ? step.step_type : '待开始';
+    document.getElementById('nowWay').textContent = isDock
+      ? (dockInterrupt ? '充至 80% 后回到第 ' + (dockRun.step + 1) + ' 步续跑' : '任务收尾，充至 80%')
+      : step ? (step.step_type === 'dock' ? '' : (WP[step.waypoint_id] ? '· ' + WP[step.waypoint_id].name : '') +
+        (step.sensor ? ' · ' + (SENSOR_CN[step.sensor] || step.sensor) : '')) : '';
+    const prog = p.p != null ? p.p : 0;
+    const bar = document.getElementById('nowBar');
+    bar.style.width = Math.round((isDock ? (p.b - 25) / 55 : prog) * 100 * 10) / 10 + '%';
+    bar.className = p.st === 'aborted' ? 'bad' : '';
+
+    renderFsm(p.st || 'executing');
+
+    // 状态数字
+    const batt = p.b != null ? p.b : 0;
+    document.getElementById('sBatt').textContent = batt.toFixed(1);
+    document.getElementById('sOdo').textContent = odomAt(T).toFixed(1);
+    let doneN = 0;
+    for (const k in doneT) { if (doneT[k] <= T) doneN++; }
+    document.getElementById('sDone').textContent = doneN + '/' + STEPS.length;
+    const bb = document.getElementById('battBar');
+    bb.style.width = batt + '%';
+    bb.className = batt < 25 ? 'low' : '';
+
+    // 告警
+    const shown = AL.filter(a => T >= a.first_ts);
+    if (shown.length !== curAlarmsShown) {
+      curAlarmsShown = shown.length;
+      alarmEl.innerHTML = '';
+      if (!shown.length) alarmEl.innerHTML = '<p class="empty">尚未触发</p>';
+      shown.forEach(a => {
+        const d = document.createElement('div');
+        d.className = 'al ' + a.level;
+        const w = WP[a.waypoint_id];
+        d.innerHTML = '<span class="t">' + a.first_ts.toFixed(1) + 's</span><div class="m">' +
+          '<b>' + (w ? w.name : a.waypoint_id) + ' · ' + (SENSOR_CN[a.sensor] || a.sensor) + '</b>　' +
+          '<span>' + a.level + '　实测 ' + a.peak_value.toFixed(1) + '（阈值 ' + a.threshold + '）</span></div>';
+        alarmEl.appendChild(d);
+      });
+      alarmEl.scrollTop = 0;
+    }
+
+    // 步骤列表态
+    stepEls.forEach((o, i) => {
+      o.el.className = 'sr';
+      if (i === si) o.el.classList.add('now');
+      const done = doneT[i] !== undefined && doneT[i] <= T;
+      if (done) o.el.classList.add('done');
+      if (i === si && p.st === 'aborted') o.el.classList.add('fail');
+      if (retried.has(i) && !done && retryAt[i] !== undefined && T >= retryAt[i]) o.el.classList.add('retry');
+      const interrupted = retried.has(i) && retryAt[i] !== undefined && T >= retryAt[i];
+      o.st.textContent = i === si ? (p.st || 'executing')
+        : (done ? (retried.has(i) ? '重跑后成功' : 'succeeded') : (interrupted ? '中断' : ''));
+    });
+
+    // 日志：已发生的才显示，始终停在最新一条
+    let pastN = 0;
+    logRows.forEach(r => { if (T >= r.t) pastN++; });
+    if (pastN !== lastPastN) {
+      lastPastN = pastN;
+      logRows.forEach((r, i) => { r.el.style.display = i < pastN ? '' : 'none'; });
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // 播放头
+    document.getElementById('playhead').style.left = (T / T_MAX * 100) + '%';
+  }
+
+  function frame() {
+    draw(); update();
+  }
+
+  /* ---------- 播放控制 ---------- */
+  let playing = false, speed = 4, last = 0;
+  const btnPlay = document.getElementById('btnPlay');
+
+  function tick(ts) {
+    if (!playing) return;
+    if (!last) last = ts;
+    const dt = Math.min(0.1, (ts - last) / 1000);
+    last = ts;
+    T += dt * speed;
+    if (T >= T_MAX) { T = T_MAX; playing = false; btnPlay.textContent = '重播'; }
+    frame();
+    if (playing) requestAnimationFrame(tick);
+  }
+
+  function play() {
+    if (T >= T_MAX - 1e-6) T = 0;
+    playing = true; last = 0; btnPlay.textContent = '暂停';
+    requestAnimationFrame(tick);
+  }
+  function pause() { playing = false; btnPlay.textContent = '播放'; }
+
+  btnPlay.onclick = () => { playing ? pause() : play(); };
+  document.getElementById('btnReset').onclick = () => { T = 0; frame(); };
+
+  const speedsEl = document.getElementById('speeds');
+  [1, 2, 4, 8].forEach(s => {
+    const b = document.createElement('button');
+    b.textContent = s + '×';
+    if (s === speed) b.className = 'on';
+    b.onclick = () => {
+      speed = s;
+      [...speedsEl.children].forEach(x => x.className = '');
+      b.className = 'on';
+    };
+    speedsEl.appendChild(b);
+  });
+
+  function seek(t) {
+    T = Math.max(0, Math.min(T_MAX, t));
+    frame();
+  }
+
+  const track = document.getElementById('track');
+  let dragging = false;
+  function fromEvent(e) {
+    const r = track.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+    seek(x / r.width * T_MAX);
+  }
+  track.addEventListener('mousedown', e => { dragging = true; fromEvent(e); });
+  window.addEventListener('mousemove', e => { if (dragging) fromEvent(e); });
+  window.addEventListener('mouseup', () => { dragging = false; });
+  track.addEventListener('touchstart', e => { dragging = true; fromEvent(e); }, { passive: true });
+  window.addEventListener('touchmove', e => { if (dragging) fromEvent(e); }, { passive: true });
+  window.addEventListener('touchend', () => { dragging = false; });
+
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); playing ? pause() : play(); }
+    if (e.code === 'ArrowRight') { e.preventDefault(); pause(); seek(T + 1); }
+    if (e.code === 'ArrowLeft') { e.preventDefault(); pause(); seek(T - 1); }
+    if (['1', '2', '4', '8'].includes(e.key)) {
+      const s = +e.key; speed = s;
+      [...speedsEl.children].forEach((x, i) => x.className = ([1, 2, 4, 8][i] === s ? 'on' : ''));
+    }
+  });
+
+  // ?t=53.8&pause 可直接定位到某一时刻（截图/分享用）
+  const q = new URLSearchParams(location.search);
+  if (q.has('t')) T = Math.max(0, Math.min(T_MAX, parseFloat(q.get('t')) || 0));
+  window.addEventListener('resize', layout);
+  layout();
+  frame();
+  if (!q.has('pause')) setTimeout(() => { if (!playing && T === 0) play(); }, 350);
+})();
+</script>
+</body>
+</html>

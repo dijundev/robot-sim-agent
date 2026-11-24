@@ -1,6 +1,6 @@
 # robot-sim-agent
 
-巡检机器人任务执行仿真栈：**自然语言指令 → 结构化巡检计划 → Action 派发 → 状态机执行 → 异常恢复 → Web 实时可视化**。
+巡检机器人任务执行仿真栈：**自然语言指令 → 结构化巡检计划 → Action 派发 → 状态机执行 → 异常恢复 → 逐 tick 回放**。
 
 目标场景是室内设备巡检（配电柜、机柜、水泵房、气体阀组、仪表盘、末端管廊）。整条链路只依赖 Python 标准库 + FastAPI，不需要 ROS 2 环境，所有指标可在本机复现。
 
@@ -70,7 +70,23 @@ python bench/run_bench.py --rounds 40
 | `rsagent/metrics.py` | 指标口径与聚合 |
 | `rsagent/service.py` | FastAPI + WebSocket：下发、取消、人工接管、告警确认 |
 | `bench/run_bench.py` | 批量评测 + 拒单评测，输出 `bench/out/` |
+| `tools/export_replay.py` | 跑一段剧本，导出逐 tick 轨迹并生成回放页 `web/replay.html` |
+| `web/replay.html` | 单文件回放页（数据内联，双击即可打开） |
 | `tests/` | 52 个单测 |
+
+## 回放页
+
+`web/replay.html` 是一次完整执行的逐 tick 记录：机器人怎么走、电量怎么掉、告警怎么触发、
+低电量怎么中断又怎么续跑，全在一条时间轴上。**不是手写动画**，数据由执行器跑出来。
+
+```bash
+python tools/export_replay.py                 # 默认剧本：起电量 29.5%，中途低电量中断
+python tools/export_replay.py --battery 100   # 电量充足，没有中断
+python tools/export_replay.py --dry           # 只看规则规划器给出的计划
+```
+
+重跑会同时刷新 `web/replay_data.json`（可读的原始记录）和 `web/replay.html`。
+页面上：空格播放/暂停，← → 前后 1 秒，1/2/4/8 切倍速，点右侧步骤跳到那一步，拖时间轴任意定位。
 
 ## 几个设计取舍
 
